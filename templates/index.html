@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>金价分析工具</title>
+    <!-- Local Static Files -->
+    <script src="/static/js/tailwindcss.js"></script>
+    <script src="/static/js/chart.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        up: '#F5222D',   // Red (Rise)
+                        down: '#10B981', // Green (Fall)
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-6 md:p-8">
+
+    <div class="max-w-7xl mx-auto space-y-6">
+        <!-- Header -->
+        <div class="flex justify-between items-end">
+            <div>
+                <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight">金价分析工具</h1>
+                <p class="text-sm text-gray-500 mt-1 font-medium">实时监控金价走势，多维度数据分析，智能收益计算</p>
+            </div>
+            <div class="bg-red-50 px-3 py-1 rounded-full border border-red-100 flex items-center gap-2">
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                </span>
+                <span class="text-xs font-bold text-red-700">实时监控中</span>
+            </div>
+        </div>
+
+        <!-- Top Metrics Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <!-- Card 1: Current Price -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div class="flex justify-between items-start">
+                    <p class="text-xs font-bold text-gray-500 uppercase">当前金价</p>
+                    <span class="text-gray-300">¥</span>
+                </div>
+                <div class="mt-4 flex items-baseline">
+                    <span class="text-3xl font-extrabold text-gray-900" id="current-price">--.--</span>
+                    <span class="ml-1 text-sm text-gray-400">元/克</span>
+                </div>
+            </div>
+
+            <!-- Card 2: Today's Change -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div class="flex justify-between items-start">
+                    <p class="text-xs font-bold text-gray-500 uppercase">今日涨跌</p>
+                    <svg class="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                </div>
+                <div class="mt-4">
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-3xl font-extrabold" id="price-change">--.--</span>
+                    </div>
+                    <p class="text-sm font-bold mt-1" id="price-percent">--%</p>
+                </div>
+            </div>
+
+            <!-- Card 3: Day High -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div class="flex justify-between items-start">
+                    <p class="text-xs font-bold text-gray-500 uppercase">今日最高</p>
+                    <svg class="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"></path></svg>
+                </div>
+                <div class="mt-4 flex items-baseline">
+                    <span class="text-3xl font-extrabold text-gray-900" id="day-high">--.--</span>
+                    <span class="ml-1 text-sm text-gray-400">近24h</span>
+                </div>
+            </div>
+
+            <!-- Card 4: Day Low -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div class="flex justify-between items-start">
+                    <p class="text-xs font-bold text-gray-500 uppercase">今日最低</p>
+                    <svg class="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"></path></svg>
+                </div>
+                <div class="mt-4 flex items-baseline">
+                    <span class="text-3xl font-extrabold text-gray-900" id="day-low">--.--</span>
+                    <span class="ml-1 text-sm text-gray-400">近24h</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Left Column: Chart (8 cols) -->
+            <div class="lg:col-span-8 bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 class="text-lg font-bold text-gray-900">实时金价趋势</h2>
+                        <p class="text-sm mt-1 text-gray-500 flex items-center gap-2">
+                            <span id="update-time">更新中...</span>
+                            <span id="chart-subtitle-change" class="font-medium">--</span>
+                        </p>
+                    </div>
+                    <!-- Time Range Selector -->
+                    <div class="flex bg-gray-100 rounded-lg p-1">
+                        <button onclick="setChartRange(5)" id="btn-5m" class="px-3 py-1 text-xs font-bold rounded-md text-gray-500 hover:text-gray-900 transition-colors">5分</button>
+                        <button onclick="setChartRange(60)" id="btn-1h" class="px-3 py-1 text-xs font-bold rounded-md text-gray-500 hover:text-gray-900 transition-colors">1小时</button>
+                        <button onclick="setChartRange(1440)" id="btn-all" class="px-3 py-1 text-xs font-bold rounded-md bg-white shadow-sm text-gray-900 transition-all">全天</button>
+                    </div>
+                </div>
+                
+                <div class="flex-grow min-h-[400px] w-full bg-gray-50 rounded-xl p-4 border border-gray-100 relative">
+                     <canvas id="priceChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Right Column: Calculator (4 cols) -->
+            <div class="lg:col-span-4 bg-white rounded-xl shadow-sm border border-gray-100 p-6 h-fit">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-lg font-bold text-gray-900">持仓收益计算</h2>
+                    <!-- Toggle Switch Mock -->
+                    <div class="w-10 h-6 bg-gray-200 rounded-full relative cursor-not-allowed">
+                        <div class="w-4 h-4 bg-white rounded-full absolute top-1 left-1 shadow-sm"></div>
+                    </div>
+                </div>
+
+                <div class="space-y-6">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-2">买入成本均价 (元/克)</label>
+                        <div class="relative group">
+                            <input type="number" id="avg-cost" step="0.01" class="block w-full pl-4 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 font-bold focus:ring-2 focus:ring-gray-900 focus:border-gray-900 focus:bg-white transition-all outline-none" placeholder="0.00">
+                            <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                                <span class="text-gray-400 font-medium group-focus-within:text-gray-900">¥</span>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-1">请输入您的持仓平均成本</p>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-2">持仓重量 (克)</label>
+                        <div class="relative group">
+                            <input type="number" id="holding-weight" step="0.0001" class="block w-full pl-4 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 font-bold focus:ring-2 focus:ring-gray-900 focus:border-gray-900 focus:bg-white transition-all outline-none" placeholder="0.0000">
+                            <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                                <span class="text-gray-400 font-medium group-focus-within:text-gray-900">g</span>
+                            </div>
+                        </div>
+                         <p class="text-xs text-gray-400 mt-1">请输入您的总持仓克重</p>
+                    </div>
+
+                    <div class="pt-6 border-t border-gray-100">
+                         <div class="flex justify-between text-sm text-gray-500 mb-2">
+                            <span>持仓盈亏 (不含费)</span>
+                            <span id="gross-profit" class="font-medium">--</span>
+                        </div>
+                        <div class="flex justify-between text-sm text-gray-500 mb-4">
+                            <span>预估卖出费 (0.4%)</span>
+                            <span id="sell-fee" class="font-medium text-down">--</span>
+                        </div>
+                        
+                        <div class="rounded-xl p-0">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm font-bold text-gray-900">净收益 (已扣费)</span>
+                                <span id="net-profit" class="text-2xl font-bold">¥0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                      <button class="w-full py-3 border border-gray-200 rounded-lg text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors">
+                        查看历史明细
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const REFRESH_INTERVAL = 3000;
+        let chart;
+        
+        // Data Store
+        let allDataPoints = []; // Stores objects { time: string, price: number, timestamp: number (seconds) }
+        let currentRangeMinutes = 1440; // Default: All Day (1440 mins)
+
+        let currentPrice = 0;
+        let lastClose = 0;
+
+        // --- User Settings Persistence ---
+        function loadSettings() {
+            const cost = localStorage.getItem('user_avg_cost');
+            const weight = localStorage.getItem('user_holding_weight');
+            
+            if (cost) document.getElementById('avg-cost').value = cost;
+            if (weight) document.getElementById('holding-weight').value = weight;
+        }
+
+        function saveSettings() {
+            const cost = document.getElementById('avg-cost').value;
+            const weight = document.getElementById('holding-weight').value;
+            
+            localStorage.setItem('user_avg_cost', cost);
+            localStorage.setItem('user_holding_weight', weight);
+        }
+
+        // --- Data Persistence (Frontend load from Backend) ---
+        async function loadHistory() {
+            try {
+                const response = await fetch('/api/history');
+                const result = await response.json();
+                
+                if (result.success && Array.isArray(result.data)) {
+                    allDataPoints = result.data;
+                    console.log(`Loaded ${allDataPoints.length} points from backend.`);
+                    // Initialize chart with full range by default
+                    currentRangeMinutes = 1440; // Force full day
+                    updateChartData();
+                }
+            } catch (e) {
+                console.error("Failed to load backend history", e);
+            }
+        }
+
+        // --- Chart Range Logic ---
+        function setChartRange(minutes) {
+            currentRangeMinutes = minutes;
+            
+            // Update Buttons UI
+            ['btn-5m', 'btn-1h', 'btn-all'].forEach(id => {
+                const btn = document.getElementById(id);
+                btn.className = "px-3 py-1 text-xs font-bold rounded-md text-gray-500 hover:text-gray-900 transition-colors";
+            });
+            
+            const activeId = minutes === 5 ? 'btn-5m' : (minutes === 60 ? 'btn-1h' : 'btn-all');
+            const activeBtn = document.getElementById(activeId);
+            activeBtn.className = "px-3 py-1 text-xs font-bold rounded-md bg-white shadow-sm text-gray-900 transition-all";
+
+            updateChartData();
+        }
+
+        // --- Downsampling Logic (Anti-Freeze) ---
+        function downsampleData(data, threshold) {
+            if (data.length <= threshold) return data;
+            
+            const sampled = [];
+            const step = data.length / threshold;
+            
+            for (let i = 0; i < threshold; i++) {
+                // Get the index for this step
+                const index = Math.floor(i * step);
+                // Ensure we don't go out of bounds
+                if (index < data.length) {
+                    sampled.push(data[index]);
+                }
+            }
+            
+            // Always include the very last point to show current price
+            if (data.length > 0 && sampled[sampled.length - 1] !== data[data.length - 1]) {
+                sampled.push(data[data.length - 1]);
+            }
+            
+            return sampled;
+        }
+
+        function updateChartData() {
+            if (!chart) return;
+
+            const now = Date.now() / 1000; // Current timestamp in seconds
+            // Filter data based on range
+            // If range is 1440 (All), we show everything we have for today.
+            // If range is 5 or 60, we filter by timestamp.
+            
+            let filteredData = allDataPoints;
+            
+            if (currentRangeMinutes < 1440) {
+                const cutoff = now - (currentRangeMinutes * 60); // Cutoff in seconds
+                filteredData = allDataPoints.filter(p => p.timestamp >= cutoff);
+            }
+
+            // Downsample if too many points (e.g., > 300) to prevent UI freeze
+            const finalData = downsampleData(filteredData, 300);
+
+            // Extract labels and data
+            const labels = finalData.map(p => p.time.split(' ')[1]); // HH:MM:SS
+            const data = finalData.map(p => p.price);
+
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = data;
+            
+            // Optimize axis
+            chart.options.scales.x.ticks.maxTicksLimit = 6;
+
+            chart.update('none'); // Efficient update
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            
+            Chart.defaults.font.family = '"Inter", sans-serif';
+            
+            // Custom Tooltip Plugin (Existing)
+            const customTooltip = {
+                id: 'customTooltip',
+                afterDraw: (chart) => {
+                    if (chart.tooltip?._active?.length) {
+                        const ctx = chart.ctx;
+                        const x = chart.tooltip._active[0].element.x;
+                        const topY = chart.scales.y.top;
+                        const bottomY = chart.scales.y.bottom;
+
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.moveTo(x, topY);
+                        ctx.lineTo(x, bottomY);
+                        ctx.lineWidth = 1;
+                        ctx.strokeStyle = '#E5E7EB';
+                        ctx.setLineDash([4, 4]);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
+            };
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [], // Initial empty
+                    datasets: [{
+                        label: 'Price',
+                        data: [], // Initial empty
+                        borderColor: '#10B981',
+                        borderWidth: 2,
+                        backgroundColor: (context) => {
+                            const ctx = context.chart.ctx;
+                            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                            gradient.addColorStop(0, 'rgba(16, 185, 129, 0.1)'); 
+                            gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
+                            return gradient;
+                        },
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        pointHoverBackgroundColor: '#FFFFFF',
+                        pointHoverBorderWidth: 2,
+                        pointHoverBorderColor: '#10B981',
+                    }]
+                },
+                plugins: [customTooltip],
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            enabled: true,
+                            backgroundColor: '#FFFFFF',
+                            titleColor: '#6B7280',
+                            titleFont: { size: 12, weight: 'normal' },
+                            bodyColor: '#10B981',
+                            bodyFont: { size: 14, weight: 'bold' },
+                            borderColor: '#E5E7EB',
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: false,
+                            callbacks: {
+                                title: (items) => items[0].label,
+                                label: (context) => `金价: ¥${context.parsed.y.toFixed(2)}/克`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { 
+                                color: '#9CA3AF',
+                                maxTicksLimit: 6 
+                            }
+                        },
+                        y: {
+                            position: 'left',
+                            grid: { 
+                                color: '#F3F4F6',
+                                borderDash: [4, 4]
+                            },
+                            ticks: { color: '#9CA3AF' }
+                        }
+                    },
+                    animation: false
+                }
+            });
+            
+            // Initial render with loaded history
+            updateChartData();
+        }
+
+        async function fetchPrice() {
+            try {
+                const response = await fetch('/api/price');
+                const result = await response.json();
+                
+                if (result.success) {
+                    const data = result.data;
+                    const price = parseFloat(data.price);
+                    
+                    if (!price || isNaN(price)) return;
+
+                    currentPrice = price;
+                    lastClose = parseFloat(data.last_close);
+                    
+                    updateUI(data);
+                    
+                    // --- New Data Logic ---
+                    const timeLabel = data.time; // Full "YYYY-MM-DD HH:MM:SS"
+                    const now = Date.now(); // Current timestamp for filtering
+
+                    // Avoid duplicate time points (check last point)
+                    if (allDataPoints.length === 0 || allDataPoints[allDataPoints.length - 1].time !== timeLabel) {
+                        // Ensure timestamp consistency: backend sends seconds, we store seconds.
+                        const ts = data.timestamp ? data.timestamp : (now / 1000);
+                        
+                        allDataPoints.push({
+                            time: timeLabel,
+                            price: price,
+                            timestamp: ts 
+                        });
+                        
+                        // Note: Backend handles persistence now.
+                        updateChartData(); // Refresh chart view
+                    }
+                }
+            } catch (error) {
+                console.error("Fetch error:", error);
+            }
+        }
+
+        function updateUI(data) {
+            // Update Price
+            document.getElementById('current-price').innerText = currentPrice.toFixed(2);
+            document.getElementById('update-time').innerText = `更新于 ${data.time.split(' ')[1]}`;
+
+            const changeEl = document.getElementById('price-change');
+            const percentEl = document.getElementById('price-percent');
+            const subtitleEl = document.getElementById('chart-subtitle-change');
+            
+            // Calculate Change
+            const change = currentPrice - lastClose;
+            const changePercent = (change / lastClose) * 100;
+            const isPositive = change >= 0;
+
+            // Colors (Red Up, Green Down)
+            const colorClass = isPositive ? 'text-up' : 'text-down'; 
+            const colorHex = isPositive ? '#F5222D' : '#10B981';
+
+            // Update Top Cards
+            changeEl.innerText = `${isPositive ? '+' : ''}${change.toFixed(2)}`;
+            percentEl.innerText = `${isPositive ? '+' : ''}${changePercent.toFixed(2)}%`;
+            
+            changeEl.className = `text-3xl font-extrabold ${colorClass}`;
+            percentEl.className = `text-sm font-bold mt-1 ${colorClass}`;
+
+            // Update Subtitle
+            subtitleEl.innerText = `↓ ${Math.abs(change).toFixed(2)} 元/克 (${changePercent.toFixed(2)}%)`;
+            subtitleEl.className = `font-medium ${colorClass}`;
+            if (isPositive) {
+                subtitleEl.innerText = `↑ ${Math.abs(change).toFixed(2)} 元/克 (+${changePercent.toFixed(2)}%)`;
+            }
+
+            // Update High/Low Cards (Calculate from history)
+            if (allDataPoints.length > 0) {
+                 // Filter for today (since midnight)
+                const now = new Date();
+                const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
+                
+                const todayPoints = allDataPoints.filter(p => p.timestamp >= midnight);
+                
+                if (todayPoints.length > 0) {
+                    const prices = todayPoints.map(p => p.price);
+                    const high = Math.max(...prices);
+                    const low = Math.min(...prices);
+                    
+                    document.getElementById('day-high').innerText = high.toFixed(2);
+                    document.getElementById('day-low').innerText = low.toFixed(2);
+                } else {
+                    // Fallback to current price if no history yet
+                    document.getElementById('day-high').innerText = currentPrice.toFixed(2);
+                    document.getElementById('day-low').innerText = currentPrice.toFixed(2);
+                }
+            }
+
+            // Update Chart Colors (Line & Tooltip)
+            if (chart) {
+                const dataset = chart.data.datasets[0];
+                dataset.borderColor = colorHex;
+                dataset.pointHoverBorderColor = colorHex;
+                dataset.backgroundColor = (context) => {
+                    const ctx = context.chart.ctx;
+                    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                    gradient.addColorStop(0, isPositive ? 'rgba(245, 34, 45, 0.1)' : 'rgba(16, 185, 129, 0.1)');
+                    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                    return gradient;
+                };
+                
+                chart.options.plugins.tooltip.bodyColor = colorHex;
+                // Don't call chart.update() here, as updateChartData() handles it
+            }
+            
+            calculateProfit(); // Auto-calc on price update
+        }
+
+        function calculateProfit() {
+            if (currentPrice === 0) return;
+
+            const cost = parseFloat(document.getElementById('avg-cost').value) || 0;
+            const weight = parseFloat(document.getElementById('holding-weight').value) || 0;
+
+            if (weight === 0) return;
+
+            // Logic Correction:
+            // 1. Market Value = Current Price * Weight
+            // 2. Gross Profit (Holding P/L) = (Current Price - Cost) * Weight
+            // 3. Selling Fee = Market Value * 0.4% (0.004)
+            // 4. Net Profit = Gross Profit - Selling Fee
+            
+            const marketValue = currentPrice * weight;
+            const fee = marketValue * 0.004;
+            const grossProfit = (currentPrice - cost) * weight;
+            const netProfit = grossProfit - fee;
+
+            // Update UI with Breakdown
+            const netEl = document.getElementById('net-profit');
+            const grossEl = document.getElementById('gross-profit');
+            const feeEl = document.getElementById('sell-fee');
+            
+            // Format Fee
+            // Fee is always a COST (Negative impact), so it's a "Loss" in financial terms -> Green
+            // But wait, user said "预估卖出费的钱也按照亏绿色，赚红色". 
+            // Fee is always money OUT. So it's always Green (Down/Loss color).
+            // Unless user considers "Fee" as part of calculation. 
+            // I will stick to Green for Fee as it's an expense.
+            feeEl.innerText = `-¥${fee.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            feeEl.className = 'font-medium text-down'; // Always Green
+
+            // Format Gross Profit
+            grossEl.innerText = `${grossProfit >= 0 ? '+' : ''}¥${grossProfit.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            grossEl.className = grossProfit >= 0 ? 'font-medium text-up' : 'font-medium text-down';
+            
+            // Format Net Profit
+            // Use localString for currency format
+            netEl.innerText = `${netProfit >= 0 ? '+' : ''}¥${netProfit.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            
+            if (netProfit > 0) {
+                netEl.className = 'text-2xl font-bold text-up'; // Red for Profit
+            } else if (netProfit < 0) {
+                netEl.className = 'text-2xl font-bold text-down'; // Green for Loss
+            } else {
+                netEl.className = 'text-2xl font-bold text-gray-900';
+            }
+        }
+
+        window.onload = () => {
+            loadSettings(); // Load user cost/weight
+            loadHistory();  // Load chart data from backend
+            initChart();
+            fetchPrice();
+            setInterval(fetchPrice, REFRESH_INTERVAL);
+            
+            // Bind input events
+            document.getElementById('avg-cost').addEventListener('input', () => {
+                calculateProfit();
+                saveSettings();
+            });
+            document.getElementById('holding-weight').addEventListener('input', () => {
+                calculateProfit();
+                saveSettings();
+            });
+        };
+    </script>
+</body>
+</html>
