@@ -409,22 +409,21 @@
 
         // --- Downsampling Logic (Anti-Freeze) ---
         function downsampleData(data, threshold) {
+            // For small datasets, don't downsample at all to keep perfect fidelity
             if (data.length <= threshold) return data;
             
+            // For large datasets (All Day), use a stable bucket algorithm
+            // This prevents "jitter" where points shift around on every update
             const sampled = [];
-            const step = data.length / threshold;
+            const step = Math.ceil(data.length / threshold);
             
-            for (let i = 0; i < threshold; i++) {
-                // Get the index for this step
-                const index = Math.floor(i * step);
-                // Ensure we don't go out of bounds
-                if (index < data.length) {
-                    sampled.push(data[index]);
-                }
+            for (let i = 0; i < data.length; i += step) {
+                // Always pick the first point of the bucket to stabilize the x-axis
+                sampled.push(data[i]);
             }
             
-            // Always include the very last point to show current price
-            if (data.length > 0 && sampled[sampled.length - 1] !== data[data.length - 1]) {
+            // Ensure the very last point is always included (current price)
+            if (sampled[sampled.length - 1] !== data[data.length - 1]) {
                 sampled.push(data[data.length - 1]);
             }
             
@@ -435,23 +434,32 @@
             if (!chart) return;
 
             const now = Date.now() / 1000; // Current timestamp in seconds
-            // Filter data based on range
-            // If range is 1440 (All), we show everything we have for today.
-            // If range is 5 or 60, we filter by timestamp.
-            
-            let filteredData = allDataPoints;
-            
+            let filteredData = [];
+
             if (currentRangeMinutes < 1440) {
-                const cutoff = now - (currentRangeMinutes * 60); // Cutoff in seconds
+                // --- Sliding Window Mode (5m, 1h) ---
+                // Strictly filter by time. Do NOT downsample heavily.
+                // 1 hour = 3600s. At 10s interval = 360 points.
+                // Chart.js can handle ~500 points easily without lag.
+                
+                const cutoff = now - (currentRangeMinutes * 60);
                 filteredData = allDataPoints.filter(p => p.timestamp >= cutoff);
+                
+                // No downsampling for short views ensures smooth "scrolling"
+                // Only cap if it gets absurdly large (e.g. glitch in data)
+                if (filteredData.length > 1000) {
+                    filteredData = downsampleData(filteredData, 1000);
+                }
+            } else {
+                // --- Compression Mode (All Day) ---
+                // Show everything, but downsample to fit screen width
+                // Threshold 300 points is good for visual density
+                filteredData = downsampleData(allDataPoints, 300);
             }
 
-            // Downsample if too many points (e.g., > 300) to prevent UI freeze
-            const finalData = downsampleData(filteredData, 300);
-
             // Extract labels and data
-            const labels = finalData.map(p => p.time.split(' ')[1]); // HH:MM:SS
-            const data = finalData.map(p => p.price);
+            const labels = filteredData.map(p => p.time.split(' ')[1]); // HH:MM:SS
+            const data = filteredData.map(p => p.price);
 
             chart.data.labels = labels;
             chart.data.datasets[0].data = data;

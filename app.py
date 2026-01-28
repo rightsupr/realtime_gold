@@ -229,61 +229,53 @@ def check_and_notify(price, time_str):
     token = settings.get("telegram_token")
     chat_id = settings.get("telegram_chat_id")
     
-    # Base user settings
     user_low = float(settings.get("price_low") or 0)
     user_high = float(settings.get("price_high") or 0)
 
-    # Initialize dynamic targets if not set
-    if current_high_target is None:
+    if current_high_target is None or current_high_target <= 0:
         current_high_target = user_high
-    if current_low_target is None:
+    if current_low_target is None or current_low_target <= 0:
         current_low_target = user_low
 
     now = time.time()
-    msg = ""
 
-    # --- High Alert Logic ---
-    if user_high > 0:
-        # Reset Logic: If price drops below original user setting, reset the dynamic target
-        if price < user_high:
-            if current_high_target != user_high:
-                print(f"Price {price} < Base High {user_high}. Resetting High Target to {user_high}")
-            current_high_target = user_high
-        
-        # Trigger Logic
-        elif price >= current_high_target:
-            # Check Cooldown (1 minute)
-            if now - last_high_alert_time >= NOTIFICATION_COOLDOWN:
-                msg = f"� *High Price Alert*\nCurrent: ¥{price}\nTarget Reached: ¥{current_high_target}\nTime: {time_str}"
-                
-                # Update State
-                last_high_alert_time = now
-                current_high_target += 5  # Step up by 5
-                print(f"High Alert Sent. Next High Target: {current_high_target}")
+    def maybe_send(alert_type, current_target, next_target, is_breakthrough):
+        nonlocal now
+        prefix = "突破" if is_breakthrough else "触发"
+        if alert_type == "high":
+            message = f"📈 *高价提醒* ({prefix})\n当前: ¥{price}\n触发线: ¥{current_target}\n下一线: ¥{next_target}\n时间: {time_str}"
+        else:
+            message = f"📉 *低价提醒* ({prefix})\n当前: ¥{price}\n触发线: ¥{current_target}\n下一线: ¥{next_target}\n时间: {time_str}"
 
-    # --- Low Alert Logic ---
-    if user_low > 0:
-        # Reset Logic: If price rises above original user setting, reset the dynamic target
-        if price > user_low:
-            if current_low_target != user_low:
-                print(f"Price {price} > Base Low {user_low}. Resetting Low Target to {user_low}")
-            current_low_target = user_low
-            
-        # Trigger Logic
-        elif price <= current_low_target:
-            # Check Cooldown (1 minute)
-            if now - last_low_alert_time >= NOTIFICATION_COOLDOWN:
-                msg = f"� *Low Price Alert*\nCurrent: ¥{price}\nTarget Reached: ¥{current_low_target}\nTime: {time_str}"
-                
-                # Update State
-                last_low_alert_time = now
-                current_low_target -= 5 # Step down by 5
-                print(f"Low Alert Sent. Next Low Target: {current_low_target}")
-    
-    if msg:
-        success, _ = send_telegram_message(token, chat_id, msg)
+        success, _ = send_telegram_message(token, chat_id, message)
         if success:
-            print(f"Notification sent: {msg}")
+            print(f"Notification sent: {message}")
+
+    if user_high > 0:
+        if price < user_high:
+            current_high_target = user_high
+        elif price >= current_high_target:
+            in_cooldown = (now - last_high_alert_time < NOTIFICATION_COOLDOWN)
+            is_breakthrough = price >= current_high_target + 5
+            can_trigger = (not in_cooldown) or is_breakthrough
+            if can_trigger:
+                current_target = current_high_target
+                current_high_target = current_high_target + 5
+                last_high_alert_time = now
+                maybe_send("high", current_target, current_high_target, is_breakthrough and in_cooldown)
+
+    if user_low > 0:
+        if price > user_low:
+            current_low_target = user_low
+        elif price <= current_low_target:
+            in_cooldown = (now - last_low_alert_time < NOTIFICATION_COOLDOWN)
+            is_breakthrough = price <= current_low_target - 5
+            can_trigger = (not in_cooldown) or is_breakthrough
+            if can_trigger:
+                current_target = current_low_target
+                current_low_target = current_low_target - 5
+                last_low_alert_time = now
+                maybe_send("low", current_target, current_low_target, is_breakthrough and in_cooldown)
 
 # Background Thread for Continuous Fetching
 def background_fetcher():
