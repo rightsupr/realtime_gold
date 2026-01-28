@@ -16,8 +16,11 @@ HISTORY_FILE = "gold_history.json"
 SETTINGS_FILE = "settings.json"
 
 # Global State for Notifications
-last_notification_time = 0
-NOTIFICATION_COOLDOWN = 1800  # 30 minutes in seconds
+last_high_alert_time = 0
+last_low_alert_time = 0
+current_high_target = None
+current_low_target = None
+NOTIFICATION_COOLDOWN = 60  # 1 minute cooldown
 
 # Load settings on startup
 def load_settings():
@@ -217,32 +220,70 @@ def fetch_gold_price():
     return None
 
 def check_and_notify(price, time_str):
-    global last_notification_time
+    global last_high_alert_time, last_low_alert_time, current_high_target, current_low_target
     
-    # Simple Cooldown Check
-    if time.time() - last_notification_time < NOTIFICATION_COOLDOWN:
-        return
-
     settings = load_settings()
     if not settings.get("notify_enabled"):
         return
 
     token = settings.get("telegram_token")
     chat_id = settings.get("telegram_chat_id")
-    low = float(settings.get("price_low") or 0)
-    high = float(settings.get("price_high") or 0)
+    
+    # Base user settings
+    user_low = float(settings.get("price_low") or 0)
+    user_high = float(settings.get("price_high") or 0)
 
+    # Initialize dynamic targets if not set
+    if current_high_target is None:
+        current_high_target = user_high
+    if current_low_target is None:
+        current_low_target = user_low
+
+    now = time.time()
     msg = ""
-    if low > 0 and price <= low:
-        msg = f"📉 *Low Price Alert*\nPrice: ¥{price}\nTime: {time_str}\nThreshold: ¥{low}"
-    elif high > 0 and price >= high:
-        msg = f"📈 *High Price Alert*\nPrice: ¥{price}\nTime: {time_str}\nThreshold: ¥{high}"
+
+    # --- High Alert Logic ---
+    if user_high > 0:
+        # Reset Logic: If price drops below original user setting, reset the dynamic target
+        if price < user_high:
+            if current_high_target != user_high:
+                print(f"Price {price} < Base High {user_high}. Resetting High Target to {user_high}")
+            current_high_target = user_high
+        
+        # Trigger Logic
+        elif price >= current_high_target:
+            # Check Cooldown (1 minute)
+            if now - last_high_alert_time >= NOTIFICATION_COOLDOWN:
+                msg = f"� *High Price Alert*\nCurrent: ¥{price}\nTarget Reached: ¥{current_high_target}\nTime: {time_str}"
+                
+                # Update State
+                last_high_alert_time = now
+                current_high_target += 5  # Step up by 5
+                print(f"High Alert Sent. Next High Target: {current_high_target}")
+
+    # --- Low Alert Logic ---
+    if user_low > 0:
+        # Reset Logic: If price rises above original user setting, reset the dynamic target
+        if price > user_low:
+            if current_low_target != user_low:
+                print(f"Price {price} > Base Low {user_low}. Resetting Low Target to {user_low}")
+            current_low_target = user_low
+            
+        # Trigger Logic
+        elif price <= current_low_target:
+            # Check Cooldown (1 minute)
+            if now - last_low_alert_time >= NOTIFICATION_COOLDOWN:
+                msg = f"� *Low Price Alert*\nCurrent: ¥{price}\nTarget Reached: ¥{current_low_target}\nTime: {time_str}"
+                
+                # Update State
+                last_low_alert_time = now
+                current_low_target -= 5 # Step down by 5
+                print(f"Low Alert Sent. Next Low Target: {current_low_target}")
     
     if msg:
         success, _ = send_telegram_message(token, chat_id, msg)
         if success:
             print(f"Notification sent: {msg}")
-            last_notification_time = time.time()
 
 # Background Thread for Continuous Fetching
 def background_fetcher():
